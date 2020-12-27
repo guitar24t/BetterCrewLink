@@ -13,6 +13,22 @@ body {
 	height: 100vh;
 }
 
+.otherplayers {
+	display: flex;
+	flex-direction: row;
+	justify-content: center;
+	align-items: center;
+	width: '100%';
+	flex-wrap: wrap;	
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.otherplayers>* {
+	margin: 5px;
+}
+
 ::-webkit-scrollbar {
 	width: 8px;
 	margin-left: 2px;

@@ -39,7 +39,7 @@ ipcMain.on(IpcSyncMessages.GET_INITIAL_STATE, (event) => {
 ipcMain.handle(IpcHandlerMessages.START_HOOK, async (event) => {
 	if (!readingGame) {
 		readingGame = true;
-
+console.log("Edfkjdsfdf");
 		// Register key events
 		iohook.on('keydown', (ev: IOHookEvent) => {
 			const shortcutKey = store.get('pushToTalkShortcut');
@@ -83,7 +83,7 @@ ipcMain.handle(IpcHandlerMessages.START_HOOK, async (event) => {
 			}
 		});
 
-		iohook.start();
+		//iohook.start();
 
 		// Read game memory
 		gameReader = new GameReader(event.sender.send.bind(event.sender));

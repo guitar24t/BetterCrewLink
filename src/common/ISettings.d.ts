@@ -9,9 +9,13 @@ export interface ISettings {
 	muteShortcut: string;
 	hideCode: boolean;
 	enableSpatialAudio: boolean;
+	compactOverlay: boolean;
+	enableOverlay: boolean;
+	overlayPosition: string;
 	localLobbySettings: ILobbySettings;
 }
 
 export interface ILobbySettings {
 	maxDistance: number;
+	haunting: boolean;
 }

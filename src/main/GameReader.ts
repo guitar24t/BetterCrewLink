@@ -70,6 +70,7 @@ export default class GameReader {
 				const dllHash = createHash('sha256');
 				dllHash.update(readFileSync(this.gameAssembly.szExePath));
 				this.dllHash = dllHash.digest('base64');
+				console.log("Game opened");
 				this.sendIPC(IpcRendererMessages.NOTIFY_GAME_OPENED, true);
 			} catch (e) {
 				if (processOpen && e.toString() === 'Error: unable to find process')
