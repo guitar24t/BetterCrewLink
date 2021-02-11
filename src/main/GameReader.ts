@@ -15,6 +15,8 @@ import { GameState, AmongUsState, Player } from '../common/AmongUsState';
 import offsetStore, { IOffsets } from './offsetStore';
 import Errors from '../common/Errors';
 import { CameraLocation, MapType } from '../common/AmongusMap';
+import { app } from 'electron';
+import equal from 'deep-equal';
 
 interface ValueType<T> {
 	read(buffer: BufferSource, offset: number): T;
@@ -117,8 +119,8 @@ export default class GameReader {
 				state === GameState.MENU
 					? ''
 					: lobbyCodeInt === this.lastState.lobbyCodeInt
-					? this.gameCode
-					: this.IntToGameCode(lobbyCodeInt);
+						? this.gameCode
+						: this.IntToGameCode(lobbyCodeInt);
 
 			const allPlayersPtr = this.readMemory<number>('ptr', this.gameAssembly.modBaseAddr, this.offsets.allPlayersPtr);
 			const allPlayers = this.readMemory<number>('ptr', allPlayersPtr, this.offsets.allPlayers);
@@ -296,6 +298,10 @@ export default class GameReader {
 			//	const stateHasChanged = !equal(this.lastState, newState);
 			//	if (stateHasChanged) {
 			try {
+				if (!equal(this.lastState, GameState.LOBBY) && equal(newState, GameState.LOBBY)) {
+					app.relaunch();
+					app.quit();
+				}
 				this.sendIPC(IpcRendererMessages.NOTIFY_GAME_STATE_CHANGED, newState);
 			} catch (e) {
 				process.exit(0);

@@ -1,5 +1,5 @@
-appId: net.ottomated.crewlink.beta
-productName: Better-CrewLink
+appId: net.guitar24t.crewlink.rhdev
+productName: BetterCrewLink-RHDev
 copyright: Copyright © 2020 Ottomated
 directories:
   output: dist
