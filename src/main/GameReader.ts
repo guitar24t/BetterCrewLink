@@ -10,11 +10,14 @@ import {
 	findPattern as findPatternRaw,
 } from 'memoryjs';
 import Struct from 'structron';
-import { IpcRendererMessages } from '../common/ipc-messages';
+import { IpcOverlayMessages, IpcRendererMessages } from '../common/ipc-messages';
 import { GameState, AmongUsState, Player } from '../common/AmongUsState';
 import offsetStore, { IOffsets } from './offsetStore';
 import Errors from '../common/Errors';
 import { CameraLocation, MapType } from '../common/AmongusMap';
+import { GenerateAvatars, numberToColorHex } from './avatarGenerator';
+import { RainbowColorId } from '../renderer/cosmetics';
+import { TempFixOffsets } from './offsetStore';
 import { app } from 'electron';
 import equal from 'deep-equal';
 
@@ -51,7 +54,8 @@ export default class GameReader {
 	lastState: AmongUsState = {} as AmongUsState;
 	amongUs: ProcessObject | null = null;
 	gameAssembly: ModuleObject | null = null;
-
+	colorsInitialized: boolean = false;
+	rainbowColor: number = -9999;
 	gameCode = 'MENU';
 
 	checkProcessOpen(): void {
@@ -82,9 +86,10 @@ export default class GameReader {
 		try {
 			this.checkProcessOpen();
 		} catch (e) {
-			return e;
+			return `Error with chcecking the process, ${e.toString()}`;
 		}
 		if (this.PlayerStruct && this.offsets && this.amongUs !== null && this.gameAssembly !== null) {
+			this.loadColors();
 			let state = GameState.UNKNOWN;
 			const meetingHud = this.readMemory<number>('pointer', this.gameAssembly.modBaseAddr, this.offsets.meetingHud);
 			const meetingHud_cachePtr =
@@ -119,9 +124,9 @@ export default class GameReader {
 				state === GameState.MENU
 					? ''
 					: lobbyCodeInt === this.lastState.lobbyCodeInt
-						? this.gameCode
-						: this.IntToGameCode(lobbyCodeInt);
-
+					? this.gameCode
+					: this.IntToGameCode(lobbyCodeInt);
+			//console.log('state: ', gameState, 'code:', this.IntToGameCode(lobbyCodeInt), '');
 			const allPlayersPtr = this.readMemory<number>('ptr', this.gameAssembly.modBaseAddr, this.offsets.allPlayersPtr);
 			const allPlayers = this.readMemory<number>('ptr', allPlayersPtr, this.offsets.allPlayers);
 
@@ -183,19 +188,19 @@ export default class GameReader {
 									case MapType.POLUS:
 									case MapType.THE_SKELD: {
 										comsSabotaged =
-											this.readMemory<number>('uint32', value, this.offsets?.HudOverrideSystemType_isActive) === 1;
+											this.readMemory<number>('uint32', value, this.offsets!.HudOverrideSystemType_isActive) === 1;
 										break;
 									}
 									case MapType.MIRA_HQ: {
 										comsSabotaged =
-											this.readMemory<number>('uint32', value, this.offsets?.hqHudSystemType_CompletedConsoles) < 2;
+											this.readMemory<number>('uint32', value, this.offsets!.hqHudSystemType_CompletedConsoles) < 2;
 									}
 								}
 							} else if (key === 18 && map === MapType.MIRA_HQ) {
 								//SystemTypes Decontamination
 								const value = this.readMemory<number>('ptr', v);
-								const lowerDoorOpen = this.readMemory<number>('int', value, this.offsets?.deconDoorLowerOpen);
-								const upperDoorOpen = this.readMemory<number>('int', value, this.offsets?.deconDoorUpperOpen);
+								const lowerDoorOpen = this.readMemory<number>('int', value, this.offsets!.deconDoorLowerOpen);
+								const upperDoorOpen = this.readMemory<number>('int', value, this.offsets!.deconDoorUpperOpen);
 								if (!lowerDoorOpen) {
 									closedDoors.push(0);
 								}
@@ -205,20 +210,20 @@ export default class GameReader {
 							}
 						});
 					}
-					const minigamePtr = this.readMemory<number>('ptr', this.gameAssembly.modBaseAddr, this.offsets?.miniGame);
-					const minigameCachePtr = this.readMemory<number>('ptr', minigamePtr, this.offsets?.objectCachePtr);
+					const minigamePtr = this.readMemory<number>('ptr', this.gameAssembly.modBaseAddr, this.offsets!.miniGame);
+					const minigameCachePtr = this.readMemory<number>('ptr', minigamePtr, this.offsets!.objectCachePtr);
 
 					if (minigameCachePtr && minigameCachePtr !== 0 && localPlayer) {
 						if (map === MapType.POLUS) {
 							const currentCameraId = this.readMemory<number>(
 								'uint32',
 								minigamePtr,
-								this.offsets?.planetSurveillanceMinigame_currentCamera
+								this.offsets!.planetSurveillanceMinigame_currentCamera
 							);
 							const camarasCount = this.readMemory<number>(
 								'uint32',
 								minigamePtr,
-								this.offsets?.planetSurveillanceMinigame_camarasCount
+								this.offsets!.planetSurveillanceMinigame_camarasCount
 							);
 
 							if (currentCameraId >= 0 && currentCameraId <= 5 && camarasCount === 6) {
@@ -228,7 +233,7 @@ export default class GameReader {
 							const roomCount = this.readMemory<number>(
 								'uint32',
 								minigamePtr,
-								this.offsets?.surveillanceMinigame_FilteredRoomsCount
+								this.offsets!.surveillanceMinigame_FilteredRoomsCount
 							);
 							if (roomCount === 4) {
 								const dist = Math.sqrt(Math.pow(localPlayer.x - -12.9364, 2) + Math.pow(localPlayer.y - -2.7928, 2));
@@ -277,7 +282,6 @@ export default class GameReader {
 				this.menuUpdateTimer = 20;
 			}
 			this.lastPlayerPtr = allPlayers;
-
 			const lobbyCode = state !== GameState.MENU ? this.gameCode || 'MENU' : 'MENU';
 			const newState: AmongUsState = {
 				lobbyCode: lobbyCode,
@@ -318,19 +322,9 @@ export default class GameReader {
 	}
 
 	initializeoffsets(): void {
+		console.log('INITIALIZEOFFSETS???');
 		this.is_64bit = this.isX64Version();
 		this.offsets = this.is_64bit ? offsetStore.x64 : offsetStore.x86;
-		this.PlayerStruct = new Struct();
-		for (const member of this.offsets.player.struct) {
-			if (member.type === 'SKIP' && member.skip) {
-				this.PlayerStruct = this.PlayerStruct.addMember(Struct.TYPES.SKIP(member.skip), member.name);
-			} else {
-				this.PlayerStruct = this.PlayerStruct.addMember<unknown>(
-					Struct.TYPES[member.type] as ValueType<unknown>,
-					member.name
-				);
-			}
-		}
 
 		const innerNetClient = this.findPattern(
 			this.offsets.signatures.innerNetClient.sig,
@@ -358,13 +352,68 @@ export default class GameReader {
 			this.offsets.signatures.miniGame.addressOffset
 		);
 
+		const palette = this.findPattern(
+			this.offsets.signatures.palette.sig,
+			this.offsets.signatures.palette.patternOffset,
+			this.offsets.signatures.palette.addressOffset
+		);
+
+		this.offsets.palette[0] = palette;
 		this.offsets.meetingHud[0] = meetingHud;
 		this.offsets.exiledPlayerId[1] = meetingHud;
-
 		this.offsets.allPlayersPtr[0] = gameData;
 		this.offsets.innerNetClient[0] = innerNetClient;
 		this.offsets.shipStatus[0] = shipStatus;
 		this.offsets.miniGame[0] = miniGame;
+		this.colorsInitialized = false;
+		if (innerNetClient === 0x1c57f54) {
+			// temp fix for older game until I added more sigs..
+			this.offsets = TempFixOffsets(this.offsets);
+		}
+		this.PlayerStruct = new Struct();
+		for (const member of this.offsets.player.struct) {
+			if (member.type === 'SKIP' && member.skip) {
+				this.PlayerStruct = this.PlayerStruct.addMember(Struct.TYPES.SKIP(member.skip), member.name);
+			} else {
+				this.PlayerStruct = this.PlayerStruct.addMember<unknown>(
+					Struct.TYPES[member.type] as ValueType<unknown>,
+					member.name
+				);
+			}
+		}
+	}
+
+	loadColors() {
+		if (this.colorsInitialized) {
+			return;
+		}
+		const palletePtr = this.readMemory<number>('ptr', this.gameAssembly!.modBaseAddr, this.offsets!.palette);
+		const PlayerColorsPtr = this.readMemory<number>('ptr', palletePtr, this.offsets!.palette_playercolor);
+		const ShadowColorsPtr = this.readMemory<number>('ptr', palletePtr, this.offsets!.palette_shadowColor);
+
+		const colorLength = Math.min(this.readMemory<number>('int', ShadowColorsPtr, this.offsets!.playerCount), 30);
+		if (colorLength == 0) {
+			return;
+		}
+		this.colorsInitialized = colorLength > 0;
+		const playercolors = [];
+		for (let i = 0; i < colorLength; i++) {
+			const playerColor = this.readMemory<number>('uint32', PlayerColorsPtr, [this.offsets!.playerAddrPtr + i * 0x4]);
+			const shadowColor = this.readMemory<number>('uint32', ShadowColorsPtr, [this.offsets!.playerAddrPtr + i * 0x4]);
+			if (playerColor === 4278190080) {
+				this.rainbowColor = i;
+			}
+			//4278190080
+			playercolors[i] = [numberToColorHex(playerColor), numberToColorHex(shadowColor)];
+		}
+		try {
+			this.sendIPC(IpcOverlayMessages.NOTIFY_PLAYERCOLORS_CHANGED, playercolors);
+			GenerateAvatars(playercolors)
+				.then(() => console.log('done generate'))
+				.catch((e) => console.error(e));
+		} catch (e) {
+			/* Empty block */
+		}
 	}
 
 	isX64Version(): boolean {
@@ -380,6 +429,7 @@ export default class GameReader {
 			this.gameAssembly.modBaseAddr + optionalHeader_offset + 0x18,
 			'short'
 		);
+	//	console.log(optionalHeader_magic, 'optionalHeader_magic');
 		return optionalHeader_magic === 0x20b;
 	}
 
@@ -466,8 +516,8 @@ export default class GameReader {
 			V2[Math.floor(a / 26)],
 			V2[Math.floor(b % 26)],
 			V2[Math.floor((b / 26) % 26)],
-			V2[Math.floor((b / (26 * 26)) % 26)],
-			V2[Math.floor((b / (26 * 26 * 26)) % 26)],
+			V2[Math.floor((b / 676) % 26)],
+			V2[Math.floor((b / 17576) % 26)],
 		].join('');
 	}
 
@@ -511,13 +561,14 @@ export default class GameReader {
 		// }
 		const name = this.readString(data.name);
 		const nameHash = this.hashCode(name);
+		const colorId = data.color === this.rainbowColor ? RainbowColorId : data.color;
 		return {
 			ptr,
 			id: data.id,
 			clientId: clientId,
 			name,
 			nameHash,
-			colorId: data.color,
+			colorId,
 			hatId: data.hat,
 			petId: data.pet,
 			skinId: data.skin,

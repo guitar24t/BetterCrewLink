@@ -66,7 +66,7 @@ const useStyles = makeStyles((theme) => ({
 		height: 40,
 	},
 	scroll: {
-		paddingTop: theme.spacing(3),
+		paddingTop: theme.spacing(1),
 		paddingLeft: theme.spacing(2),
 		paddingRight: theme.spacing(2),
 		overflowY: 'auto',
@@ -125,6 +125,12 @@ const keys = new Set([
 	'LControl',
 ]);
 
+export enum pushToTalkOptions {
+	VOICE,
+	PUSH_TO_TALK,
+	PUSH_TO_MUTE,
+}
+
 const store = new Store<ISettings>({
 	migrations: {
 		'2.0.6': (store) => {
@@ -153,6 +159,17 @@ const store = new Store<ISettings>({
 		'2.2.0': (store) => {
 			store.set('mobileHost', true);
 		},
+		'2.2.5': (store) => {
+			const pushToTalkValue = store.get('pushToTalk');
+			if (typeof pushToTalkValue === 'boolean') {
+				store.set('pushToTalkMode', pushToTalkValue ? pushToTalkOptions.PUSH_TO_TALK : pushToTalkOptions.VOICE);
+			}
+			// @ts-ignore
+			store.delete('pushToTalk');
+		},
+		'2.3.6': (store) => {
+			store.set('serverURL', 'https://bettercrewl.ink');
+		},
 	},
 	schema: {
 		alwaysOnTop: {
@@ -167,13 +184,13 @@ const store = new Store<ISettings>({
 			type: 'string',
 			default: 'Default',
 		},
-		pushToTalk: {
-			type: 'boolean',
-			default: false,
+		pushToTalkMode: {
+			type: 'number',
+			default: pushToTalkOptions.VOICE,
 		},
 		serverURL: {
 			type: 'string',
-			default: 'https://crewl.ink',
+			default: 'https://bettercrewl.ink',
 			format: 'uri',
 		},
 		pushToTalkShortcut: {
@@ -449,7 +466,7 @@ const URLInput: React.FC<URLInputProps> = function ({ initialURL, onValidURL, cl
 						onClick={() => {
 							setOpen(false);
 							setURLValid(true);
-							onValidURL('https://crewl.ink');
+							onValidURL('https://bettercrewl.ink');
 						}}
 					>
 						Reset to default
@@ -614,6 +631,27 @@ const Settings: React.FC<SettingsProps> = function ({ open, onClose }: SettingsP
 		}
 	};
 
+	const resetDefaults = () => {
+		openWarningDialog(
+			'Are you sure?',
+			'This will reset ALL settings to their default values.',
+			() => {
+				store.clear();
+				setSettings({
+					type: 'set',
+					action: store.store,
+				});
+
+				// I'm like 90% sure this isn't necessary but whenever you click the mic/speaker dropdown it is called, so it may be necessary
+				// updateDevices(); 
+
+				// This is necessary for resetting hotkeys properly, the main thread needs to be notified to reset the hooks
+				ipcRenderer.send(IpcHandlerMessages.RESET_KEYHOOKS);
+			},
+			true
+		);
+	};
+
 	const microphones = devices.filter((d) => d.kind === 'audioinput');
 	const speakers = devices.filter((d) => d.kind === 'audiooutput');
 	const [localLobbySettings, setLocalLobbySettings] = useState(settings.localLobbySettings);
@@ -625,6 +663,7 @@ const Settings: React.FC<SettingsProps> = function ({ open, onClose }: SettingsP
 	const isInMenuOrLobby = gameState?.gameState === GameState.LOBBY || gameState?.gameState === GameState.MENU;
 	const canChangeLobbySettings =
 		gameState?.gameState === GameState.MENU || (gameState?.isHost && gameState?.gameState === GameState.LOBBY);
+	const isInMenuOrGameClosed = (gameState.gameState === undefined) || (gameState.gameState === GameState.MENU);
 
 	const [warningDialog, setWarningDialog] = React.useState({ open: false } as IConfirmDialog);
 
@@ -691,8 +730,10 @@ const Settings: React.FC<SettingsProps> = function ({ open, onClose }: SettingsP
 							</Button>
 						</DialogActions>
 					</Dialog>
-					<Typography variant="h6">Lobby Settings</Typography>
-					<Typography gutterBottom>
+				</div>
+				<Typography variant="h6">Lobby Settings</Typography>
+				<div>
+					<Typography id="input-slider" gutterBottom>
 						<i>
 							{canChangeLobbySettings
 								? localLobbySettings.visionHearing
@@ -724,12 +765,14 @@ const Settings: React.FC<SettingsProps> = function ({ open, onClose }: SettingsP
 							}}
 						/>
 					</DisabledTooltip>
+				</div>
+				<div>
 					<DisabledTooltip
 						disabled={!canChangeLobbySettings}
 						title={isInMenuOrLobby ? 'Only the game host can change this!' : 'You can only change this in the lobby!'}
 					>
 						<FormControlLabel
-							label="Walls block audio"
+							label="Walls Block Audio"
 							disabled={!canChangeLobbySettings}
 							onChange={(_, newValue: boolean) => {
 								localLobbySettings.wallsBlockAudio = newValue;
@@ -750,7 +793,7 @@ const Settings: React.FC<SettingsProps> = function ({ open, onClose }: SettingsP
 						title={isInMenuOrLobby ? 'Only the game host can change this!' : 'You can only change this in the lobby!'}
 					>
 						<FormControlLabel
-							label="Hear people in vision only"
+							label="Hear People in Vision Only"
 							disabled={!canChangeLobbySettings}
 							onChange={(_, newValue: boolean) => {
 								console.log('new vlaue of setting: ', newValue);
@@ -801,7 +844,7 @@ const Settings: React.FC<SettingsProps> = function ({ open, onClose }: SettingsP
 						title={isInMenuOrLobby ? 'Only the game host can change this!' : 'You can only change this in the lobby!'}
 					>
 						<FormControlLabel
-							label="Hear Impostors In Vents"
+							label="Hear Impostors in Vents"
 							disabled={!canChangeLobbySettings}
 							onChange={(_, newValue: boolean) => {
 								localLobbySettings.hearImpostorsInVents = newValue;
@@ -826,7 +869,7 @@ const Settings: React.FC<SettingsProps> = function ({ open, onClose }: SettingsP
 						title={isInMenuOrLobby ? 'Only the game host can change this!' : 'You can only change this in the lobby!'}
 					>
 						<FormControlLabel
-							label="Private talk in vents"
+							label="Private Talk in Vents"
 							disabled={!canChangeLobbySettings}
 							onChange={(_, newValue: boolean) => {
 								localLobbySettings.impostersHearImpostersInvent = newValue;
@@ -877,7 +920,7 @@ const Settings: React.FC<SettingsProps> = function ({ open, onClose }: SettingsP
 						title={isInMenuOrLobby ? 'Only the game host can change this!' : 'You can only change this in the lobby!'}
 					>
 						<FormControlLabel
-							label="Hear through cameras"
+							label="Hear Through Cameras"
 							disabled={!canChangeLobbySettings}
 							onChange={(_, newValue: boolean) => {
 								localLobbySettings.hearThroughCameras = newValue;
@@ -901,7 +944,7 @@ const Settings: React.FC<SettingsProps> = function ({ open, onClose }: SettingsP
 						title={isInMenuOrLobby ? 'Only the game host can change this!' : 'You can only change this in the lobby!'}
 					>
 						<FormControlLabel
-							label="Only ghost can talk/hear"
+							label="Only Ghosts Can Talk/Hear"
 							disabled={!canChangeLobbySettings}
 							onChange={(_, newValue: boolean) => {
 								console.log('new vlaue of setting: ', newValue);
@@ -934,7 +977,7 @@ const Settings: React.FC<SettingsProps> = function ({ open, onClose }: SettingsP
 						title={isInMenuOrLobby ? 'Only the game host can change this!' : 'You can only change this in the lobby!'}
 					>
 						<FormControlLabel
-							label="Meetings &amp; lobby only"
+							label="Meetings/Lobby Only"
 							disabled={!canChangeLobbySettings}
 							onChange={(_, newValue: boolean) => {
 								console.log('new vlaue of setting: ', newValue);
@@ -1014,22 +1057,23 @@ const Settings: React.FC<SettingsProps> = function ({ open, onClose }: SettingsP
 				</TextField>
 				{open && <TestSpeakersButton speaker={settings.speaker} />}
 				<RadioGroup
-					value={settings.pushToTalk}
+					value={settings.pushToTalkMode}
 					onChange={(ev) => {
 						setSettings({
 							type: 'setOne',
-							action: ['pushToTalk', ev.target.value === 'true'],
+							action: ['pushToTalkMode', Number(ev.target.value)],
 						});
 					}}
 				>
-					<FormControlLabel label="Voice Activity" value={false} control={<Radio />} />
-					<FormControlLabel label="Push To Talk" value={true} control={<Radio />} />
+					<FormControlLabel label="Voice Activity" value={pushToTalkOptions.VOICE} control={<Radio />} />
+					<FormControlLabel label="Push To Talk" value={pushToTalkOptions.PUSH_TO_TALK} control={<Radio />} />
+					<FormControlLabel label="Push To Mute" value={pushToTalkOptions.PUSH_TO_MUTE} control={<Radio />} />
 				</RadioGroup>
 				<Divider />
 
 				<div>
-				<Typography id="input-slider" gutterBottom>
-						Microphone volume
+					<Typography id="input-slider" gutterBottom>
+						Microphone Volume
 					</Typography>
 					<Grid container spacing={2}>
 						<Grid item xs={3}>
@@ -1070,7 +1114,7 @@ const Settings: React.FC<SettingsProps> = function ({ open, onClose }: SettingsP
 						</Grid>
 					</Grid>
 					<Typography id="input-slider" gutterBottom>
-						Microphone sensitivity
+						Microphone Sensitivity
 					</Typography>
 					<Grid container spacing={2}>
 						<Grid item xs={3}>
@@ -1095,17 +1139,25 @@ const Settings: React.FC<SettingsProps> = function ({ open, onClose }: SettingsP
 						>
 							<Slider
 								disabled={!settings.micSensitivityEnabled}
-								value={settings.micSensitivity}
+								value={+((1 - settings.micSensitivity).toFixed(2))}
 								valueLabelDisplay="auto"
 								min={0}
 								max={1}
+								color={settings.micSensitivity < 0.3? "primary" : "secondary"}
 								step={0.05}
 								onChange={(_, newValue: number | number[]) => {
-									setSettings({
-										type: 'setOne',
-										action: ['micSensitivity', newValue],
-									});
-								}}
+									openWarningDialog(
+										'Are you sure?',
+										'If you set the sensitivity any lower it might not work.',
+										() => {
+											setSettings({
+												type: 'setOne',
+												action: ['micSensitivity', (1 - (newValue as number))],
+											});
+										},
+										newValue == 0.7 && settings.micSensitivity < 0.3
+									);
+							}}
 								aria-labelledby="input-slider"
 							/>
 						</Grid>
@@ -1113,7 +1165,7 @@ const Settings: React.FC<SettingsProps> = function ({ open, onClose }: SettingsP
 					<Divider />
 
 					<Typography id="input-slider" gutterBottom>
-						Crew volume as ghost
+						Crew Volume as Ghost
 					</Typography>
 					<Slider
 						value={settings.ghostVolume}
@@ -1127,7 +1179,7 @@ const Settings: React.FC<SettingsProps> = function ({ open, onClose }: SettingsP
 						aria-labelledby="input-slider"
 					/>
 					<Typography id="input-slider" gutterBottom>
-						Master volume
+						Master Volume
 					</Typography>
 					<Slider
 						value={settings.masterVolume}
@@ -1141,7 +1193,6 @@ const Settings: React.FC<SettingsProps> = function ({ open, onClose }: SettingsP
 						}}
 						aria-labelledby="input-slider"
 					/>
-				
 				</div>
 				<Divider />
 				<Typography variant="h6">Keyboard Shortcuts</Typography>
@@ -1200,7 +1251,7 @@ const Settings: React.FC<SettingsProps> = function ({ open, onClose }: SettingsP
 				<Divider />
 				<Typography variant="h6">Overlay</Typography>
 				<FormControlLabel
-					label="Crewlink on top"
+					label="Crewlink on Top"
 					checked={settings.alwaysOnTop}
 					onChange={(_, checked: boolean) => {
 						setSettings({
@@ -1224,7 +1275,7 @@ const Settings: React.FC<SettingsProps> = function ({ open, onClose }: SettingsP
 				{settings.enableOverlay && (
 					<>
 						<FormControlLabel
-							label="compact Overlay"
+							label="Compact Overlay"
 							checked={settings.compactOverlay}
 							onChange={(_, checked: boolean) => {
 								setSettings({
@@ -1277,7 +1328,7 @@ const Settings: React.FC<SettingsProps> = function ({ open, onClose }: SettingsP
 				<Typography variant="h6">Advanced</Typography>
 				<div>
 					<FormControlLabel
-						label="NAT FIX"
+						label="NAT Fix"
 						checked={settings.natFix}
 						onChange={(_, checked: boolean) => {
 							openWarningDialog(
@@ -1310,7 +1361,7 @@ const Settings: React.FC<SettingsProps> = function ({ open, onClose }: SettingsP
 				<Typography variant="h6">BETA/DEBUG</Typography>
 				<div>
 					<FormControlLabel
-						label="Mobile host"
+						label="Mobile Host"
 						checked={settings.mobileHost}
 						onChange={(_, checked: boolean) => {
 							setSettings({
@@ -1321,7 +1372,7 @@ const Settings: React.FC<SettingsProps> = function ({ open, onClose }: SettingsP
 						control={<Checkbox />}
 					/>
 					<FormControlLabel
-						label="VAD enabled"
+						label="VAD Enabled"
 						checked={settings.vadEnabled}
 						onChange={(_, checked: boolean) => {
 							openWarningDialog(
@@ -1350,7 +1401,7 @@ const Settings: React.FC<SettingsProps> = function ({ open, onClose }: SettingsP
 						control={<Checkbox />}
 					/>
 					<FormControlLabel
-						label="Spatial audio"
+						label="Spatial Audio"
 						checked={settings.enableSpatialAudio}
 						onChange={(_, checked: boolean) => {
 							setSettings({
@@ -1387,7 +1438,7 @@ const Settings: React.FC<SettingsProps> = function ({ open, onClose }: SettingsP
 						control={<Checkbox />}
 					/>
 					<FormControlLabel
-						label="OBS browseroverlay"
+						label="OBS Browser Overlay"
 						checked={settings.obsOverlay}
 						onChange={(_, checked: boolean) => {
 							setSettings({
@@ -1446,6 +1497,21 @@ const Settings: React.FC<SettingsProps> = function ({ open, onClose }: SettingsP
 							/>
 						</>
 					)}
+				</div>
+				<Divider />
+				<Typography variant="h6">Troubleshooting</Typography>
+				<div>
+					<DisabledTooltip
+						disabled={!isInMenuOrGameClosed}
+						title={"Not available while in lobby"}
+					>
+						<Button
+							disabled={!isInMenuOrGameClosed}
+							variant="contained" 
+							color="secondary"
+							onClick={() => resetDefaults()}
+						>Restore Defaults</Button>
+					</DisabledTooltip>
 				</div>
 				<Alert className={classes.alert} severity="info" style={{ display: unsaved ? undefined : 'none' }}>
 					Exit Settings to apply changes

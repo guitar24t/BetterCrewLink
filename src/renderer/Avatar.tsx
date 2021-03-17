@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { Player } from '../common/AmongUsState';
-import { backLayerHats, hatOffsets, hats, skins, players, coloredHats } from './cosmetics';
+import { backLayerHats, hatOffsets, getCosmetic, redAlive, cosmeticType } from './cosmetics';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import MicOff from '@material-ui/icons/MicOff';
 import VolumeOff from '@material-ui/icons/VolumeOff';
@@ -11,6 +11,7 @@ import ErrorOutlIne from '@material-ui/icons/ErrorOutlIne';
 // import Tooltip from '@material-ui/core/Tooltip';
 import Tooltip from 'react-tooltip-lite';
 import { SocketConfig } from '../common/ISettings';
+import Slider from '@material-ui/core/Slider';
 
 const useStyles = makeStyles(() => ({
 	canvas: {
@@ -31,7 +32,6 @@ const useStyles = makeStyles(() => ({
 }));
 
 export interface CanvasProps {
-	src: string;
 	hat: number;
 	skin: number;
 	isAlive: boolean;
@@ -76,9 +76,9 @@ const Avatar: React.FC<AvatarProps> = function ({
 	overflow = false,
 	onConfigChange,
 }: AvatarProps) {
-	const status = isAlive ? 'alive' : 'dead';
-	let image = players[status][player.colorId];
-	if (!image) image = players[status][0];
+	//const status = isAlive ? 'alive' : 'dead';
+	// let image = players[status][player.colorId];
+	// if (!image) image = players[status][0];
 	const classes = useStyles();
 	let icon;
 
@@ -108,26 +108,25 @@ const Avatar: React.FC<AvatarProps> = function ({
 				<div>
 					<b>{player?.name}</b>
 					<div className="slidecontainer" style={{ minWidth: '55px' }}>
-						<input
-							type="range"
-							min="0"
-							max="2"
-							value={socketConfig?.volume}
-							className="relativeGainSlider"
-							style={{ width: '50px' }}
-							step="any"
+						<Slider
+							value={socketConfig?.volume || 1}
+							min={0}
+							max={2}
+							step={0.02}
+							onChange={(_, newValue: number | number[]) => {
+								if (socketConfig) {
+									socketConfig.volume = newValue as number;
+								}
+							}}
+							valueLabelDisplay={'auto'}
+							valueLabelFormat={(value) => Math.floor(value * 100) + '%'}
 							onMouseLeave={() => {
 								console.log('onmouseleave');
 								if (onConfigChange) {
 									onConfigChange();
 								}
 							}}
-							onChange={(ev): void => {
-								if (socketConfig) {
-									socketConfig.volume = parseFloat(ev.target.value.substr(0, 6));
-								}
-							}}
-						></input>
+						/>
 					</div>{' '}
 				</div>
 			}
@@ -135,7 +134,6 @@ const Avatar: React.FC<AvatarProps> = function ({
 		>
 			<Canvas
 				className={classes.canvas}
-				src={image}
 				color={player.colorId}
 				hat={showHat === false ? -1 : player.hatId}
 				skin={player.skinId - 1}
@@ -197,7 +195,7 @@ const useCanvasStyles = makeStyles(() => ({
 	},
 }));
 
-function Canvas({ src, hat, skin, isAlive, lookLeft, size, borderColor, color, overflow }: CanvasProps) {
+function Canvas({ hat, skin, isAlive, lookLeft, size, borderColor, color, overflow }: CanvasProps) {
 	const hatImg = useRef<HTMLImageElement>(null);
 	const skinImg = useRef<HTMLImageElement>(null);
 	const image = useRef<HTMLImageElement>(null);
@@ -212,6 +210,10 @@ function Canvas({ src, hat, skin, isAlive, lookLeft, size, borderColor, color, o
 		paddingLeft: -7,
 	});
 
+	const onerror = (e: any) => {
+		e.target.onError = null;
+		e.target.src = '';
+	};
 	return (
 		<>
 			<div className={classes.avatar}>
@@ -225,12 +227,40 @@ function Canvas({ src, hat, skin, isAlive, lookLeft, size, borderColor, color, o
 						transform: 'unset',
 					}}
 				>
-					<img src={src} ref={image} className={classes.base} />
-					<img src={skins[skin]} ref={skinImg} className={classes.skin} />
+					<img
+						src={getCosmetic(color, isAlive, cosmeticType.base)}
+						ref={image}
+						className={classes.base}
+						onError={(e: any) => {
+							e.target.onError = null;
+							e.target.src = redAlive;
+						}}
+					/>
 
-					{overflow && <img src={coloredHats[`${hat}${color}`] || hats[hat]} ref={hatImg} className={classes.hat} />}
+					<img
+						src={getCosmetic(color, isAlive, cosmeticType.skin, skin)}
+						ref={skinImg}
+						className={classes.skin}
+						onError={onerror}
+					/>
+
+					{overflow && (
+						<img
+							src={getCosmetic(color, isAlive, cosmeticType.hat, hat)}
+							ref={hatImg}
+							className={classes.hat}
+							onError={onerror}
+						/>
+					)}
 				</div>
-				{!overflow && <img src={coloredHats[`${hat}${color}`] || hats[hat]} ref={hatImg} className={classes.hat} />}
+				{!overflow && (
+					<img
+						src={getCosmetic(color, isAlive, cosmeticType.hat, hat)}
+						ref={hatImg}
+						className={classes.hat}
+						onError={onerror}
+					/>
+				)}
 			</div>
 		</>
 	);

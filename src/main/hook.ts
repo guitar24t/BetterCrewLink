@@ -5,6 +5,7 @@ import { keyboardWatcher } from 'node-keyboard-watcher';
 import Store from 'electron-store';
 import { ISettings } from '../common/ISettings';
 import { IpcHandlerMessages, IpcRendererMessages, IpcSyncMessages } from '../common/ipc-messages';
+// import { GenerateAvatars } from './avatarGenerator';
 
 const store = new Store<ISettings>();
 
@@ -89,9 +90,14 @@ ipcMain.handle(IpcHandlerMessages.START_HOOK, async (event) => {
 
 ipcMain.on('reload', async () => {
 	global.mainWindow?.reload();
-//	global.overlay?.reload();
-	
+	//	global.overlay?.reload();
 });
+
+ipcMain.on('generate', async () => {
+	//	await GenerateAvatars();
+});
+console.log('CALLING GENERATEAVATARS');
+// GenerateAvatars().then(() => console.log("done generate")).catch((e) => console.error(e));
 
 const keycodeMap = {
 	Space: 0x20,

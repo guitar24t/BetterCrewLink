@@ -32,6 +32,7 @@ import { ObsVoiceState } from '../common/ObsOverlay';
 import { poseCollide } from '../common/ColliderMap';
 import adapter from 'webrtc-adapter';
 import { VADOptions } from './vad';
+import { pushToTalkOptions } from './settings/Settings';
 
 console.log(adapter.browserDetails.browser);
 
@@ -74,7 +75,7 @@ interface ConnectionStuff {
 
 	microphoneGain?: GainNode;
 	audioListener?: VadNode;
-	pushToTalk: boolean;
+	pushToTalkMode: number;
 	deafened: boolean;
 	muted: boolean;
 }
@@ -463,9 +464,10 @@ const Voice: React.FC<VoiceProps> = function ({ error: initialError }: VoiceProp
 	// Handle pushToTalk, if set
 	useEffect(() => {
 		if (!connectionStuff.current.instream) return;
-		connectionStuff.current.instream.getAudioTracks()[0].enabled = !settings.pushToTalk;
-		connectionStuff.current.pushToTalk = settings.pushToTalk;
-	}, [settings.pushToTalk]);
+		connectionStuff.current.instream.getAudioTracks()[0].enabled =
+			settings.pushToTalkMode !== pushToTalkOptions.PUSH_TO_TALK;
+		connectionStuff.current.pushToTalkMode = settings.pushToTalkMode;
+	}, [settings.pushToTalkMode]);
 
 	// Emit lobby settings to connected peers
 	useEffect(() => {
@@ -585,10 +587,7 @@ const Voice: React.FC<VoiceProps> = function ({ error: initialError }: VoiceProp
 				connectionStuff.current.audioListener.init();
 			}
 		}
-	}, [
-		settings.microphoneGain,
-		settings.micSensitivity
-	]);
+	}, [settings.microphoneGain, settings.micSensitivity]);
 
 	// Add lobbySettings to lobbySettingsRef
 	useEffect(() => {
@@ -612,7 +611,7 @@ const Voice: React.FC<VoiceProps> = function ({ error: initialError }: VoiceProp
 
 	// const [audioContext] = useState<AudioContext>(() => new AudioContext());
 	const connectionStuff = useRef<ConnectionStuff>({
-		pushToTalk: settings.pushToTalk,
+		pushToTalkMode: settings.pushToTalkMode,
 		deafened: false,
 		muted: false,
 	});
@@ -639,6 +638,7 @@ const Voice: React.FC<VoiceProps> = function ({ error: initialError }: VoiceProp
 			if (error.message) {
 				setError(error.message);
 			}
+			console.error('socketIO error:', error);
 		});
 		socket.on('connect', () => {
 			setConnected(true);
@@ -745,27 +745,29 @@ const Voice: React.FC<VoiceProps> = function ({ error: initialError }: VoiceProp
 				connectionStuff.current.stream = stream;
 				connectionStuff.current.instream = inStream;
 
-				inStream.getAudioTracks()[0].enabled = !settings.pushToTalk;
+				inStream.getAudioTracks()[0].enabled = settings.pushToTalkMode !== pushToTalkOptions.PUSH_TO_TALK;
 
 				ipcRenderer.on(IpcRendererMessages.TOGGLE_DEAFEN, () => {
 					connectionStuff.current.deafened = !connectionStuff.current.deafened;
-					inStream.getAudioTracks()[0].enabled = !connectionStuff.current.deafened && !connectionStuff.current.muted;
+					inStream.getAudioTracks()[0].enabled = !connectionStuff.current.deafened && !connectionStuff.current.muted && connectionStuff.current.pushToTalkMode !== pushToTalkOptions.PUSH_TO_TALK;
 					setDeafened(connectionStuff.current.deafened);
 				});
+				
 				ipcRenderer.on(IpcRendererMessages.TOGGLE_MUTE, () => {
 					connectionStuff.current.muted = !connectionStuff.current.muted;
 					if (connectionStuff.current.deafened) {
 						connectionStuff.current.deafened = false;
 						connectionStuff.current.muted = false;
 					}
-					inStream.getAudioTracks()[0].enabled = !connectionStuff.current.muted && !connectionStuff.current.deafened;
+					inStream.getAudioTracks()[0].enabled = !connectionStuff.current.muted && !connectionStuff.current.deafened && connectionStuff.current.pushToTalkMode !== pushToTalkOptions.PUSH_TO_TALK;
 					setMuted(connectionStuff.current.muted);
 					setDeafened(connectionStuff.current.deafened);
 				});
 				ipcRenderer.on(IpcRendererMessages.PUSH_TO_TALK, (_: unknown, pressing: boolean) => {
-					if (!connectionStuff.current.pushToTalk) return;
+					if (connectionStuff.current.pushToTalkMode === pushToTalkOptions.VOICE) return;
 					if (!connectionStuff.current.deafened) {
-						inStream.getAudioTracks()[0].enabled = pressing;
+						inStream.getAudioTracks()[0].enabled =
+							connectionStuff.current.pushToTalkMode === pushToTalkOptions.PUSH_TO_TALK ? pressing : !pressing;
 					}
 				});
 
@@ -822,6 +824,7 @@ const Voice: React.FC<VoiceProps> = function ({ error: initialError }: VoiceProp
 							}
 						}, 1000);
 					});
+
 					connection.on('stream', async (stream: MediaStream) => {
 						console.log('ONSTREAM');
 
@@ -934,8 +937,7 @@ const Voice: React.FC<VoiceProps> = function ({ error: initialError }: VoiceProp
 
 				socket.on('signal', ({ data, from }: { data: Peer.SignalData; from: string }) => {
 					//console.log('onsignal', JSON.stringify(data));
-
-					if (data.hasOwnProperty('mobilePlayerInfo')) {
+					if (data.hasOwnProperty('mobilePlayerInfo')) { // eslint-disable-line
 						const mobiledata = data as mobileHostInfo;
 						if (
 							mobiledata.mobilePlayerInfo.code === hostRef.current.code &&
@@ -1040,9 +1042,8 @@ const Voice: React.FC<VoiceProps> = function ({ error: initialError }: VoiceProp
 
 				if (gain > 0) {
 					const playerVolume = playerConfigs[player.nameHash]?.volume;
-
-					gain = playerVolume === undefined ? gain : gain * playerVolume;
-
+					gain = playerVolume === undefined ? gain : gain * playerVolume;	
+					
 					if (myPlayer.isDead && !player.isDead) {
 						gain = gain * (settings.ghostVolume / 100);
 					}
