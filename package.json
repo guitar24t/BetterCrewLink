@@ -1,6 +1,6 @@
 {
   "name": "bettercrewlink",
-  "version": "2.34.6",
+  "version": "2.54.6",
   "license": "GPL-3.0-or-later",
   "description": "Free, open, Among Us proximity voice chat",
   "repository": {
@@ -25,7 +25,7 @@
     "dist:32": "yarn compile && electron-builder --win --ia32",
     "dist:64": "yarn compile && electron-builder --win --x64",
     "dist:linux": "yarn compile && electron-builder --linux --x64",
-    "publish": "yarn compile && electron-builder --win --x64 --ia32 --publish always ",
+    "publish": "set GH_TOKEN=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 && yarn compile && electron-builder --win --x64 --ia32 --publish always ",
     "publish:linux": "yarn compile && electron-builder --x64 --ia32 --linux --publish always"
   },
   "dependencies": {
