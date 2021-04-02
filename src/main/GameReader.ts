@@ -59,19 +59,27 @@ export default class GameReader {
 	gameCode = 'MENU';
 
 	checkProcessOpen(): void {
-		const processOpen = getProcesses().find((p) => p.szExeFile === 'Among Us.exe');
-
-		if (!this.amongUs && processOpen) {
-			try {
-				this.amongUs = openProcess('Among Us.exe');
-				this.gameAssembly = findModule('GameAssembly.dll', this.amongUs.th32ProcessID);
-				this.initializeoffsets();
-				this.sendIPC(IpcRendererMessages.NOTIFY_GAME_OPENED, true);
-			} catch (e) {
-				if (processOpen && e.toString() === 'Error: unable to find process') throw Errors.OPEN_AS_ADMINISTRATOR;
-				this.amongUs = null;
+		const processesOpen = getProcesses().filter((p) => p.szExeFile === 'Among Us.exe');
+		let error = '';
+		if (!this.amongUs && processesOpen.length > 0) {
+			for (let processOpen of processesOpen) {
+				try {
+					this.amongUs = openProcess(processOpen.th32ProcessID);
+					this.gameAssembly = findModule('GameAssembly.dll', this.amongUs.th32ProcessID);
+					this.initializeoffsets();
+					this.sendIPC(IpcRendererMessages.NOTIFY_GAME_OPENED, true);
+					break;
+				} catch (e) {
+					if (processOpen && e.toString() === 'Error: unable to find process') {
+						error = Errors.OPEN_AS_ADMINISTRATOR;
+					}
+					this.amongUs = null;
+				}
 			}
-		} else if (this.amongUs && !processOpen) {
+			if (!this.amongUs && error) {
+				throw error;
+			}
+		} else if (this.amongUs && processesOpen.length === 0) {
 			this.amongUs = null;
 			try {
 				this.sendIPC(IpcRendererMessages.NOTIFY_GAME_OPENED, false);
@@ -117,7 +125,7 @@ export default class GameReader {
 					else state = GameState.TASKS;
 					break;
 			}
-
+			// const DEBUG = true;
 			const lobbyCodeInt =
 				state === GameState.MENU ? -1 : this.readMemory<number>('int32', innerNetClient, this.offsets.gameCode);
 			this.gameCode =
@@ -126,7 +134,11 @@ export default class GameReader {
 					: lobbyCodeInt === this.lastState.lobbyCodeInt
 					? this.gameCode
 					: this.IntToGameCode(lobbyCodeInt);
-			//console.log('state: ', gameState, 'code:', this.IntToGameCode(lobbyCodeInt), '');
+
+			// if (DEBUG) {
+			// 	this.gameCode = 'oof';
+			// }
+
 			const allPlayersPtr = this.readMemory<number>('ptr', this.gameAssembly.modBaseAddr, this.offsets.allPlayersPtr);
 			const allPlayers = this.readMemory<number>('ptr', allPlayersPtr, this.offsets.allPlayers);
 
@@ -165,7 +177,6 @@ export default class GameReader {
 					}
 
 					players.push(player);
-
 					if (player.id === exiledPlayerId || player.isDead || player.disconnected || player.name === '') continue;
 					if (player.isImpostor) impostors++;
 					else crewmates++;
@@ -177,14 +188,20 @@ export default class GameReader {
 					const shipPtr = this.readMemory<number>('ptr', this.gameAssembly.modBaseAddr, this.offsets.shipStatus);
 
 					const systemsPtr = this.readMemory<number>('ptr', shipPtr, this.offsets.shipStatus_systems);
-					map = this.readMemory<number>('int32', shipPtr, this.offsets.shipStatus_map, MapType.UNKNOWN);
+					const gameOptionsPtr = this.readMemory<number>(
+						'ptr',
+						this.gameAssembly.modBaseAddr,
+						this.offsets.playerControl_GameOptions
+					);
 
+					map = this.readMemory<number>('byte', gameOptionsPtr, this.offsets.gameOptions_MapId);
 					if (systemsPtr !== 0 && state === GameState.TASKS) {
 						this.readDictionary(systemsPtr, 32, (k, v) => {
 							const key = this.readMemory<number>('int32', k);
 							if (key === 14) {
 								const value = this.readMemory<number>('ptr', v);
 								switch (map) {
+									case MapType.AIRSHIP:
 									case MapType.POLUS:
 									case MapType.THE_SKELD: {
 										comsSabotaged =
@@ -212,9 +229,8 @@ export default class GameReader {
 					}
 					const minigamePtr = this.readMemory<number>('ptr', this.gameAssembly.modBaseAddr, this.offsets!.miniGame);
 					const minigameCachePtr = this.readMemory<number>('ptr', minigamePtr, this.offsets!.objectCachePtr);
-
 					if (minigameCachePtr && minigameCachePtr !== 0 && localPlayer) {
-						if (map === MapType.POLUS) {
+						if (map === MapType.POLUS || map === MapType.AIRSHIP) {
 							const currentCameraId = this.readMemory<number>(
 								'uint32',
 								minigamePtr,
@@ -225,6 +241,7 @@ export default class GameReader {
 								minigamePtr,
 								this.offsets!.planetSurveillanceMinigame_camarasCount
 							);
+
 
 							if (currentCameraId >= 0 && currentCameraId <= 5 && camarasCount === 6) {
 								currentCamera = currentCameraId as CameraLocation;
@@ -358,6 +375,12 @@ export default class GameReader {
 			this.offsets.signatures.palette.addressOffset
 		);
 
+		const playerControl = this.findPattern(
+			this.offsets.signatures.playerControl.sig,
+			this.offsets.signatures.playerControl.patternOffset,
+			this.offsets.signatures.playerControl.addressOffset
+		);
+		this.offsets.playerControl_GameOptions[0] = playerControl;
 		this.offsets.palette[0] = palette;
 		this.offsets.meetingHud[0] = meetingHud;
 		this.offsets.exiledPlayerId[1] = meetingHud;
@@ -366,7 +389,8 @@ export default class GameReader {
 		this.offsets.shipStatus[0] = shipStatus;
 		this.offsets.miniGame[0] = miniGame;
 		this.colorsInitialized = false;
-		if (innerNetClient === 0x1c57f54) {
+		console.log(innerNetClient);
+		if (innerNetClient === 0x2c6c278) {
 			// temp fix for older game until I added more sigs..
 			this.offsets = TempFixOffsets(this.offsets);
 		}
@@ -429,7 +453,7 @@ export default class GameReader {
 			this.gameAssembly.modBaseAddr + optionalHeader_offset + 0x18,
 			'short'
 		);
-	//	console.log(optionalHeader_magic, 'optionalHeader_magic');
+		//	console.log(optionalHeader_magic, 'optionalHeader_magic');
 		return optionalHeader_magic === 0x20b;
 	}
 

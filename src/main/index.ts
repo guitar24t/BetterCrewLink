@@ -3,6 +3,7 @@
 import { autoUpdater } from 'electron-updater';
 import { app, BrowserWindow, ipcMain, session } from 'electron';
 import windowStateKeeper from 'electron-window-state';
+import { platform } from 'os';
 import { join as joinPath } from 'path';
 import { format as formatUrl } from 'url';
 import './hook';
@@ -31,6 +32,9 @@ global.mainWindow = null;
 global.overlay = null;
 
 app.commandLine.appendSwitch('disable-pinch');
+if (platform() === 'linux') {
+    app.disableHardwareAcceleration();
+}
 
 function createMainWindow() {
 	const mainWindowState = windowStateKeeper({});
@@ -127,6 +131,8 @@ function createOverlay() {
 		show: false,
 		transparent: true,
 		resizable: true,
+		focusable: false
+
 		//	...overlayWindow.WINDOW_OPTS,
 	});
 
@@ -275,7 +281,7 @@ if (!gotTheLock) {
 	// create main BrowserWindow when electron is ready
 	app.whenReady().then(() => {
 		protocol.registerFileProtocol('static', (request, callback) => {
-			const pathname =  app.getAppPath() + '\\..\\' + request.url.replace('static:///', '') 
+			const pathname =  app.getPath('userData') + '/static/' + request.url.replace('static:///', '') 
 			callback(pathname);
 		});
 

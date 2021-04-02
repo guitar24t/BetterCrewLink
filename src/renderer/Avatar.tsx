@@ -6,7 +6,7 @@ import MicOff from '@material-ui/icons/MicOff';
 import VolumeOff from '@material-ui/icons/VolumeOff';
 import WifiOff from '@material-ui/icons/WifiOff';
 import LinkOff from '@material-ui/icons/LinkOff';
-import ErrorOutlIne from '@material-ui/icons/ErrorOutlIne';
+import ErrorOutline from '@material-ui/icons/ErrorOutline';
 
 // import Tooltip from '@material-ui/core/Tooltip';
 import Tooltip from 'react-tooltip-lite';
@@ -98,7 +98,7 @@ const Avatar: React.FC<AvatarProps> = function ({
 			break;
 	}
 	if (player.bugged) {
-		icon = <ErrorOutlIne className={classes.icon} style={{ background: 'red', borderColor: '' }} />;
+		icon = <ErrorOutline className={classes.icon} style={{ background: 'red', borderColor: '' }} />;
 	}
 
 	return (
@@ -239,6 +239,7 @@ function Canvas({ hat, skin, isAlive, lookLeft, size, borderColor, color, overfl
 
 					<img
 						src={getCosmetic(color, isAlive, cosmeticType.skin, skin)}
+						style={{top: skin === 17? '0%' : undefined}}
 						ref={skinImg}
 						className={classes.skin}
 						onError={onerror}
