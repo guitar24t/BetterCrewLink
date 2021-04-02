@@ -26,13 +26,14 @@ import Divider from '@material-ui/core/Divider';
 import { validateClientPeerConfig } from './validateClientPeerConfig';
 // @ts-ignore
 import reverbOgx from 'arraybuffer-loader!../../static/reverb.ogx';
-import { CameraLocation, PolusMap, SkeldMap } from '../common/AmongusMap';
+import { CameraLocation, AmongUsMaps } from '../common/AmongusMap';
 import Store from 'electron-store';
 import { ObsVoiceState } from '../common/ObsOverlay';
-import { poseCollide } from '../common/ColliderMap';
+// import { poseCollide } from '../common/ColliderMap';
 import adapter from 'webrtc-adapter';
 import { VADOptions } from './vad';
 import { pushToTalkOptions } from './settings/Settings';
+import { poseCollide } from '../common/ColliderMap';
 
 console.log(adapter.browserDetails.browser);
 
@@ -260,9 +261,7 @@ const Voice: React.FC<VoiceProps> = function ({ error: initialError }: VoiceProp
 		}
 		switch (state.gameState) {
 			case GameState.MENU:
-				endGain = 0;
-				break;
-
+				return 0;
 			case GameState.LOBBY:
 				endGain = 1;
 				break;
@@ -284,8 +283,7 @@ const Voice: React.FC<VoiceProps> = function ({ error: initialError }: VoiceProp
 				) {
 					endGain = 0;
 				}
-				if (
-					lobbySettings.wallsBlockAudio &&
+				if (lobbySettings.wallsBlockAudio &&
 					!me.isDead &&
 					poseCollide({ x: me.x, y: me.y }, { x: other.x, y: other.y }, gameState.map, gameState.closedDoors)
 				) {
@@ -348,12 +346,12 @@ const Voice: React.FC<VoiceProps> = function ({ error: initialError }: VoiceProp
 		if (Math.sqrt(panPos[0] * panPos[0] + panPos[1] * panPos[1]) > maxdistance) {
 			if (lobbySettings.hearThroughCameras && state.gameState === GameState.TASKS) {
 				if (state.currentCamera !== CameraLocation.NONE && state.currentCamera !== CameraLocation.Skeld) {
-					const camerapos = PolusMap.cameras[state.currentCamera];
+					const camerapos = AmongUsMaps[state.map].cameras[state.currentCamera];
 					panPos = [other.x - camerapos.x, other.y - camerapos.y];
 				} else if (state.currentCamera === CameraLocation.Skeld) {
 					let distance = 999;
 					let camerapos = { x: 999, y: 999 };
-					for (const camera of Object.values(SkeldMap.cameras)) {
+					for (const camera of Object.values( AmongUsMaps[state.map].cameras)) {
 						const cameraDist = Math.sqrt(Math.pow(other.x - camera.x, 2) + Math.pow(other.y - camera.y, 2));
 						if (distance > cameraDist) {
 							distance = cameraDist;
@@ -414,6 +412,7 @@ const Voice: React.FC<VoiceProps> = function ({ error: initialError }: VoiceProp
 		// 	hostRef.current.gamestate !== GameState.MENU,
 		// 	hostRef.current.gamestate !== GameState.UNKNOWN
 		// );
+		console.log("notifyMobilePlayers");
 		if (
 			settingsRef.current.mobileHost &&
 			hostRef.current.gamestate !== GameState.MENU &&
@@ -423,8 +422,8 @@ const Voice: React.FC<VoiceProps> = function ({ error: initialError }: VoiceProp
 				to: hostRef.current.code + '_mobile',
 				data: { mobileHostInfo: { isHostingMobile: true, isGameHost: hostRef.current.isHost } },
 			});
-			setTimeout(() => notifyMobilePlayers(), 5000);
 		}
+		setTimeout(() => notifyMobilePlayers(), 5000);
 	}
 
 	function disconnectAudioHtmlElement(element: HTMLAudioElement) {
@@ -639,12 +638,15 @@ const Voice: React.FC<VoiceProps> = function ({ error: initialError }: VoiceProp
 				setError(error.message);
 			}
 			console.error('socketIO error:', error);
+			currentLobby = 'MENU';
 		});
 		socket.on('connect', () => {
 			setConnected(true);
+			// send current room code?
 		});
 		socket.on('disconnect', () => {
 			setConnected(false);
+			currentLobby = 'MENU';
 		});
 		notifyMobilePlayers();
 
@@ -749,17 +751,23 @@ const Voice: React.FC<VoiceProps> = function ({ error: initialError }: VoiceProp
 
 				ipcRenderer.on(IpcRendererMessages.TOGGLE_DEAFEN, () => {
 					connectionStuff.current.deafened = !connectionStuff.current.deafened;
-					inStream.getAudioTracks()[0].enabled = !connectionStuff.current.deafened && !connectionStuff.current.muted && connectionStuff.current.pushToTalkMode !== pushToTalkOptions.PUSH_TO_TALK;
+					inStream.getAudioTracks()[0].enabled =
+						!connectionStuff.current.deafened &&
+						!connectionStuff.current.muted &&
+						connectionStuff.current.pushToTalkMode !== pushToTalkOptions.PUSH_TO_TALK;
 					setDeafened(connectionStuff.current.deafened);
 				});
-				
+
 				ipcRenderer.on(IpcRendererMessages.TOGGLE_MUTE, () => {
 					connectionStuff.current.muted = !connectionStuff.current.muted;
 					if (connectionStuff.current.deafened) {
 						connectionStuff.current.deafened = false;
 						connectionStuff.current.muted = false;
 					}
-					inStream.getAudioTracks()[0].enabled = !connectionStuff.current.muted && !connectionStuff.current.deafened && connectionStuff.current.pushToTalkMode !== pushToTalkOptions.PUSH_TO_TALK;
+					inStream.getAudioTracks()[0].enabled =
+						!connectionStuff.current.muted &&
+						!connectionStuff.current.deafened &&
+						connectionStuff.current.pushToTalkMode !== pushToTalkOptions.PUSH_TO_TALK;
 					setMuted(connectionStuff.current.muted);
 					setDeafened(connectionStuff.current.deafened);
 				});
@@ -782,6 +790,8 @@ const Voice: React.FC<VoiceProps> = function ({ error: initialError }: VoiceProp
 						setSocketClients({});
 						currentLobby = lobbyCode;
 					} else if (currentLobby !== lobbyCode) {
+						socket.emit('leave');
+						socket.emit('id', playerId, clientId);
 						socket.emit('join', lobbyCode, playerId, clientId);
 						currentLobby = lobbyCode;
 						if (!isHost) {
@@ -937,7 +947,8 @@ const Voice: React.FC<VoiceProps> = function ({ error: initialError }: VoiceProp
 
 				socket.on('signal', ({ data, from }: { data: Peer.SignalData; from: string }) => {
 					//console.log('onsignal', JSON.stringify(data));
-					if (data.hasOwnProperty('mobilePlayerInfo')) { // eslint-disable-line
+					if (data.hasOwnProperty('mobilePlayerInfo')) {
+						// eslint-disable-line
 						const mobiledata = data as mobileHostInfo;
 						if (
 							mobiledata.mobilePlayerInfo.code === hostRef.current.code &&
@@ -1005,7 +1016,7 @@ const Voice: React.FC<VoiceProps> = function ({ error: initialError }: VoiceProp
 
 	const otherPlayers = useMemo(() => {
 		let otherPlayers: Player[];
-		if (!gameState || !gameState.players || gameState.lobbyCode === 'MENU' || !myPlayer) return [];
+		if (!gameState || !gameState.players || !myPlayer) return [];
 		else otherPlayers = gameState.players.filter((p) => !p.isLocal);
 		maxDistanceRef.current = lobbySettings.visionHearing
 			? myPlayer.isImpostor
@@ -1042,8 +1053,8 @@ const Voice: React.FC<VoiceProps> = function ({ error: initialError }: VoiceProp
 
 				if (gain > 0) {
 					const playerVolume = playerConfigs[player.nameHash]?.volume;
-					gain = playerVolume === undefined ? gain : gain * playerVolume;	
-					
+					gain = playerVolume === undefined ? gain : gain * playerVolume;
+
 					if (myPlayer.isDead && !player.isDead) {
 						gain = gain * (settings.ghostVolume / 100);
 					}
@@ -1077,7 +1088,7 @@ const Voice: React.FC<VoiceProps> = function ({ error: initialError }: VoiceProp
 		if (connect?.connect) {
 			connect.connect(gameState?.lobbyCode ?? 'MENU', myPlayer?.id ?? 0, gameState.clientId, gameState.isHost);
 		}
-	}, [connect?.connect, gameState?.lobbyCode]);
+	}, [connect?.connect, gameState?.lobbyCode, connected]);
 
 	// Connect to P2P negotiator, when game mode change
 	useEffect(() => {
