@@ -25,7 +25,7 @@
     "dist:32": "yarn compile && electron-builder --win --ia32",
     "dist:64": "yarn compile && electron-builder --win --x64",
     "dist:linux": "yarn compile && electron-builder --linux --x64",
-    "publish": "set GH_TOKEN=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 && yarn compile && electron-builder --win --x64 --ia32 --publish always ",
+    "publish": "set /p GH_TOKEN= && yarn compile && electron-builder --win --x64 --ia32 --publish always ",
     "publish:linux": "yarn compile && electron-builder --x64 --ia32 --linux --publish always"
   },
   "dependencies": {
