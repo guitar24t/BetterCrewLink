@@ -1,4 +1,4 @@
-[![GitHub Downloads][github-shield]][github-url] [![GPL-3.0 License][license-shield]][license-url] [![Appveyor Build][appveyor-shield]][appveyor-url] [![Support BetterCrewLink][paypal-shield]][paypal-url] [![Discord Server][discord-shield]][discord-url]
+[![GitHub Downloads][github-shield]][github-url] [![GPL-3.0 License][license-shield]][license-url] [![Appveyor Build][appveyor-shield]][appveyor-url] [![Support BetterCrewLink][paypal-shield]][paypal-url] [![Support BetterCrewLink][kofi-shield]][kofi-url] [![Discord Server][discord-shield]][discord-url]
 
 <br />
 <p align="center">
@@ -201,7 +201,9 @@ Distributed under the GNU General Public License v3.0. See <a href="https://gith
 [license-url]: https://github.com/OhMyGuus/BetterCrewLink/blob/nightly/LICENSE
 [appveyor-shield]: https://img.shields.io/appveyor/build/OhMyGuus/bettercrewlink?label=Build
 [appveyor-url]: https://ci.appveyor.com/project/OhMyGuus/bettercrewlink
-[paypal-shield]: https://img.shields.io/badge/Support-BetterCrewLink-purple
+[paypal-shield]: https://img.shields.io/badge/Support-BetterCrewLink-purple?logo=PayPal
 [paypal-url]: https://www.paypal.com/donate?hosted_button_id=KS43BDTGN76JQ
+[kofi-shield]: https://img.shields.io/badge/Support-BetterCrewLink-purple?logo=Ko-fi
+[kofi-url]: https://ko-fi.com/ohmyguus
 [discord-shield]: https://img.shields.io/discord/791516611143270410?color=cornflowerblue&label=Discord&logo=Discord&logoColor=white
 [discord-url]: https://discord.gg/qDqTzvj4SH
