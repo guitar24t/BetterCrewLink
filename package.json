@@ -7,6 +7,7 @@
     "type": "git",
     "url": "https://github.com/guitar24t/BetterCrewLink.git"
   },
+  "private": true,
   "funding": {
     "type": "individual",
     "url": "https://www.paypal.com/donate?hosted_button_id=KS43BDTGN76JQ"
@@ -25,7 +26,7 @@
     "dist:32": "yarn compile && electron-builder --win --ia32",
     "dist:64": "yarn compile && electron-builder --win --x64",
     "dist:linux": "yarn compile && electron-builder --linux --x64",
-    "publish": "set /p GH_TOKEN= && yarn compile && electron-builder --win --x64 --ia32 --publish always ",
+    "publish": "yarn compile && electron-builder --win --x64 --ia32 --publish always ",
     "publish:linux": "yarn compile && electron-builder --x64 --ia32 --linux --publish always"
   },
   "dependencies": {
